@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pembayaran - Layanan Umum</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- ======================================================================= -->
+    <!-- MIDTRANS SNAP SDK -->
+    <!-- Ganti 'YOUR_CLIENT_KEY_HERE' dengan Client Key Anda (Sandbox/Production) -->
+    <!-- Untuk Production, ubah URL menjadi: https://app.midtrans.com/snap/snap.js -->
+    <!-- ======================================================================= -->
+    <script src="https://app.sandbox.midtrans.com/snap/snap.js" data-client-key="YOUR_CLIENT_KEY_HERE"></script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* Animasi Loading Spinner */
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 3px solid #ffffff;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Animasi Toast/Notifikasi */
+        .toast-enter { transform: translateY(100%); opacity: 0; }
+        .toast-enter-active { transform: translateY(0); opacity: 1; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .toast-exit { transform: translateY(100%); opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        /* Hilangkan panah up/down di input number bawaan browser jika dipakai */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-slate-800 antialiased">
+
+    <!-- Container Notifikasi -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-3 w-full max-w-sm pointer-events-none"></div>
+
+    <div class="w-full max-w-md bg-white rounded-3xl shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-100">
+        
+        <!-- Header Form -->
+        <div class="bg-blue-600 px-8 py-6 text-white">
+            <h2 class="text-2xl font-bold mb-1">Form Pembayaran</h2>
+            <p class="text-blue-100 text-sm">Lengkapi detail di bawah untuk melanjutkan</p>
+        </div>
+
+        <!-- Body Form -->
+        <form id="payment-form" class="p-8 space-y-5">
+            
+            <!-- Input Nama -->
+            <div>
+                <label for="cust-name" class="block text-sm font-semibold text-slate-700 mb-1.5">Nama Lengkap</label>
+                <input type="text" id="cust-name" required placeholder="Cth: Budi Santoso" 
+                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm bg-slate-50 focus:bg-white text-slate-800 placeholder-slate-400">
+            </div>
+
+            <!-- Input Email -->
+            <div>
+                <label for="cust-email" class="block text-sm font-semibold text-slate-700 mb-1.5">Alamat Email</label>
+                <input type="email" id="cust-email" required placeholder="Cth: budi@email.com" 
+                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm bg-slate-50 focus:bg-white text-slate-800 placeholder-slate-400">
+            </div>
+
+            <!-- Input Jumlah Bayar -->
+            <div>
+                <label for="amount" class="block text-sm font-semibold text-slate-700 mb-1.5">Jumlah Bayar</label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <span class="text-slate-500 font-bold">Rp</span>
+                    </div>
+                    <input type="text" id="amount" required placeholder="0" 
+                        class="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-lg font-bold text-slate-800 bg-slate-50 focus:bg-white placeholder-slate-300">
+                </div>
+            </div>
+
+            <!-- Tombol Submit -->
+            <button type="submit" id="submit-btn" 
+                class="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-4 rounded-xl transition-all duration-200 shadow-lg shadow-blue-200 focus:outline-none focus:ring-4 focus:ring-blue-100 flex justify-center items-center gap-2">
+                <span id="btn-text">Lanjutkan Pembayaran</span>
+                <div id="btn-spinner" class="spinner hidden"></div>
+            </button>
+            
+            <div class="flex items-center justify-center gap-2 pt-2 opacity-60">
+                <svg class="w-4 h-4 text-slate-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+                <span class="text-xs text-slate-500 font-medium">Transaksi dijamin aman dan terenkripsi</span>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        /**
+         * =========================================================================
+         * KONFIGURASI BACKEND
+         * Ganti URL ini dengan Endpoint Backend Anda yang mengembalikan Snap Token.
+         * Contoh response dari backend Anda harus berupa JSON: { "token": "..." }
+         * =========================================================================
+         */
+        const BACKEND_TOKENIZE_URL = 'http://localhost:3000/tokenize';
+
+        // --- DOM Elements ---
+        const form = document.getElementById('payment-form');
+        const amountInput = document.getElementById('amount');
+        const nameInput = document.getElementById('cust-name');
+        const emailInput = document.getElementById('cust-email');
+        const submitBtn = document.getElementById('submit-btn');
+        const btnText = document.getElementById('btn-text');
+        const btnSpinner = document.getElementById('btn-spinner');
+
+        let rawAmount = 0;
+
+        // --- Auto Format Rupiah Input ---
+        amountInput.addEventListener('input', function(e) {
+            let value = this.value.replace(/[^0-9]/g, '');
+            if (value === '') {
+                this.value = '';
+                rawAmount = 0;
+                return;
+            }
+            rawAmount = parseInt(value, 10);
+            this.value = rawAmount.toLocaleString('id-ID');
+        });
+
+        // --- Sistem Notifikasi Kustom (Pengganti Alert) ---
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast-enter flex items-center gap-3 px-4 py-4 rounded-xl shadow-xl pointer-events-auto bg-white border-l-4';
+            
+            if (type === 'success') {
+                toast.classList.add('border-green-500');
+                toast.innerHTML = `<div class="bg-green-100 text-green-600 p-1.5 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></div>`;
+            } else if (type === 'error') {
+                toast.classList.add('border-red-500');
+                toast.innerHTML = `<div class="bg-red-100 text-red-600 p-1.5 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></div>`;
+            } else {
+                toast.classList.add('border-yellow-400');
+                toast.innerHTML = `<div class="bg-yellow-100 text-yellow-600 p-1.5 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></div>`;
+            }
+
+            toast.innerHTML += `
+                <div class="flex-1 text-sm font-medium text-slate-800">${message}</div>
+                <button class="text-slate-400 hover:text-slate-600" onclick="this.parentElement.classList.add('toast-exit'); setTimeout(() => this.parentElement.remove(), 300)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            `;
+
+            container.appendChild(toast);
+
+            // Trigger animasi masuk
+            requestAnimationFrame(() => {
+                toast.classList.remove('toast-enter');
+                toast.classList.add('toast-enter-active');
+            });
+
+            // Hilang otomatis setelah 5 detik
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.classList.remove('toast-enter-active');
+                    toast.classList.add('toast-exit');
+                    setTimeout(() => { if (toast.parentElement) toast.remove(); }, 300);
+                }
+            }, 5000);
+        }
+
+        // --- Kontrol Status Tombol ---
+        function setLoadingState(isLoading) {
+            submitBtn.disabled = isLoading;
+            if (isLoading) {
+                btnText.innerText = "Memproses...";
+                btnSpinner.classList.remove('hidden');
+                submitBtn.classList.add('opacity-80', 'cursor-not-allowed');
+            } else {
+                btnText.innerText = "Lanjutkan Pembayaran";
+                btnSpinner.classList.add('hidden');
+                submitBtn.classList.remove('opacity-80', 'cursor-not-allowed');
+            }
+        }
+
+        // --- Proses Form Submit ---
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            // Validasi Input
+            if (rawAmount < 100) {
+                showToast('Mohon masukkan jumlah pembayaran yang valid.', 'error');
+                return;
+            }
+
+            setLoadingState(true);
+
+            // Data yang akan dikirim ke Backend Anda
+            const orderData = {
+                name: nameInput.value.trim(),
+                email: emailInput.value.trim(),
+                amount: rawAmount
+            };
+
+            try {
+                // 1. Fetch Token dari Backend
+                const response = await fetch(BACKEND_TOKENIZE_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(orderData)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Gagal menghubungi server backend (Status: ${response.status})`);
+                }
+
+                const responseData = await response.json();
+                
+                // Pastikan backend mengembalikan properti 'token'
+                const snapToken = responseData.token; 
+                
+                if (!snapToken) {
+                    throw new Error('Token Midtrans tidak ditemukan dari response server.');
+                }
+
+                setLoadingState(false);
+
+                // 2. Tampilkan Popup Midtrans Snap
+                window.snap.pay(snapToken, {
+                    onSuccess: function(result) {
+                        console.log('Payment Success:', result);
+                        showToast('Pembayaran berhasil dilakukan. Terima kasih!', 'success');
+                        form.reset();
+                        rawAmount = 0;
+                    },
+                    onPending: function(result) {
+                        console.log('Payment Pending:', result);
+                        showToast('Pembayaran tertunda. Silahkan selesaikan transaksi Anda.', 'warning');
+                    },
+                    onError: function(result) {
+                        console.log('Payment Error:', result);
+                        showToast('Gagal memproses pembayaran. Silahkan coba lagi.', 'error');
+                    },
+                    onClose: function() {
+                        showToast('Anda menutup halaman pembayaran sebelum selesai.', 'warning');
+                    }
+                });
+
+            } catch (error) {
+                console.error('Error saat proses pembayaran:', error);
+                
+                // Jika backend error (karena URL dummy belum aktif), tampilkan pesan ramah
+                if (error.message.includes('Failed to fetch') || error.message.includes('Gagal menghubungi server backend')) {
+                    showToast('Pastikan server backend Anda berjalan di ' + BACKEND_TOKENIZE_URL, 'error');
+                } else {
+                    showToast(error.message, 'error');
+                }
+                
+                setLoadingState(false);
+            }
+        });
+    </script>
+</body>
+</html>
